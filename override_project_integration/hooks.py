@@ -196,8 +196,8 @@ app_license = "mit"
 
 # Request Events
 # ----------------
-# before_request = ["override_project_integration.utils.before_request"]
-# after_request = ["override_project_integration.utils.after_request"]
+before_request = ["override_project_integration.api.middleware.before_request"]
+after_request = ["override_project_integration.api.middleware.after_request"]
 
 # Job Events
 # ----------
