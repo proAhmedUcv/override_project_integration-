@@ -619,12 +619,38 @@ class SmallProjectProcessor(BaseFormProcessor):
         Returns:
             tuple: (mapped_data, child_tables)
         """
+        # Apply Arabic to English mapping for main fields first
+        processed_form_data = form_data.copy()
+        
+        # Gender mapping
+        if "gender" in processed_form_data:
+            gender_value = processed_form_data["gender"]
+            if gender_value == "ذكر":
+                processed_form_data["gender"] = "Male"
+            elif gender_value == "أنثى":
+                processed_form_data["gender"] = "Female"
+        
+        # Project status mapping
+        if "projectStatus" in processed_form_data:
+            status_value = processed_form_data["projectStatus"]
+            status_mapping = {
+                "قيد الفكرة": "Open",
+                "قيد التنفيذ": "Open",
+                "قائم": "Approved",
+                "نشط": "Approved",
+                "غير نشط": "Rejected",
+                "معلق": "Open",
+                "أغلق": "Cancelled"
+            }
+            mapped_status = status_mapping.get(status_value, status_value)
+            processed_form_data["projectStatus"] = mapped_status
+        
         # Use the advanced field mapper for main fields
-        main_data, _ = self.field_mapper.map_form_data(form_data)
+        main_data, _ = self.field_mapper.map_form_data(processed_form_data)
         
         # Use child table processor for comprehensive child table handling
         child_processor = create_child_table_processor(self.doctype)
-        child_tables = child_processor.process_child_tables(form_data)
+        child_tables = child_processor.process_child_tables(processed_form_data)
         
         return main_data, child_tables
     
