@@ -234,7 +234,103 @@ class FieldMapper:
                 # Use default value
                 mapped_data[target_field] = field_config["default"]
         
+        # Apply Arabic to English mapping for specific fields
+        mapped_data = self._apply_arabic_to_english_mapping(mapped_data, form_data)
+        
         return mapped_data
+    
+    def _apply_arabic_to_english_mapping(self, mapped_data, form_data):
+        """
+        Apply Arabic to English mapping for specific fields
+        
+        Args:
+            mapped_data (dict): Already mapped data
+            form_data (dict): Original form data
+            
+        Returns:
+            dict: Data with Arabic values converted to English
+        """
+        # Gender mapping
+        if "gender" in form_data:
+            gender_value = form_data["gender"]
+            if gender_value == "ذكر":
+                mapped_data["gender"] = "Male"
+            elif gender_value == "أنثى":
+                mapped_data["gender"] = "Female"
+            elif gender_value in ["Male", "Female"]:
+                mapped_data["gender"] = gender_value
+        
+        # Project status mapping
+        if "projectStatus" in form_data:
+            status_value = form_data["projectStatus"]
+            status_mapping = {
+                "قيد الفكرة": "Open",
+                "قيد التنفيذ": "Open",
+                "قائم": "Approved",
+                "نشط": "Approved",
+                "غير نشط": "Rejected",
+                "معلق": "Open",
+                "أغلق": "Cancelled"
+            }
+            mapped_data["status"] = status_mapping.get(status_value, status_value)
+        
+        return mapped_data
+    
+    def _apply_child_table_mapping(self, table_name, table_data_list):
+        """
+        Apply Arabic to English mapping for child table data
+        
+        Args:
+            table_name (str): Name of the child table
+            table_data_list (list): List of child table rows
+            
+        Returns:
+            list: Child table data with Arabic values converted to English
+        """
+        if not table_data_list:
+            return table_data_list
+        
+        processed_rows = []
+        
+        for row_data in table_data_list:
+            processed_row = row_data.copy()
+            
+            # Handle unit mapping for productivity table
+            if table_name == "productions" and "unit" in processed_row:
+                unit_value = processed_row["unit"]
+                unit_mapping = {
+                    "كيلوجرام": "Kg",
+                    "صندوق": "Box", 
+                    "قطعة": "Nos",
+                    "متر": "Meter",
+                    "لتر": "Litre",
+                    "جرام": "Gram",
+                    "طن": "Ton"
+                }
+                processed_row["unit"] = unit_mapping.get(unit_value, unit_value)
+            
+            # Handle education level mapping
+            if table_name == "educations" and "level" in processed_row:
+                level_value = processed_row["level"]
+                level_mapping = {
+                    "خريج": "Graduate",
+                    "دراسات عليا": "Post Graduate",
+                    "طالب جامعي": "Under Graduate"
+                }
+                processed_row["level"] = level_mapping.get(level_value, level_value)
+            
+            # Handle accommodation type mapping for addresses
+            if table_name == "addresses" and "accommodation_type" in processed_row:
+                accommodation_value = processed_row["accommodation_type"]
+                accommodation_mapping = {
+                    "مملوك": "Owned",
+                    "مستأجر": "Rented"
+                }
+                processed_row["accommodation_type"] = accommodation_mapping.get(accommodation_value, accommodation_value)
+            
+            processed_rows.append(processed_row)
+        
+        return processed_rows
     
     def _map_child_tables(self, form_data):
         """
@@ -285,7 +381,9 @@ class FieldMapper:
                             address_data[doctype_field] = value
                 
                 if address_data:
-                    child_tables_data["address_details"] = [address_data]
+                    # Apply Arabic to English mapping for address data
+                    address_data_list = self._apply_child_table_mapping("addresses", [address_data])
+                    child_tables_data["address_details"] = address_data_list
                     
             else:
                 # Handle array-based child tables (educations, productions, etc.)
@@ -310,6 +408,9 @@ class FieldMapper:
                                 table_data_list.append(mapped_row)
                     
                     if table_data_list:
+                        # Apply Arabic to English mapping for child table data
+                        table_data_list = self._apply_child_table_mapping(table_name, table_data_list)
+                        
                         # Use the table_field name from config or fallback to table_name
                         table_field_name = table_config.get("table_field", table_name)
                         child_tables_data[table_field_name] = table_data_list

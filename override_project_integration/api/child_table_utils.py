@@ -119,6 +119,8 @@ class ChildTableProcessor:
             table_data = self._process_single_table(table_name, table_config, form_data)
             
             if table_data:
+                # Apply Arabic to English mapping
+                table_data = self._apply_arabic_to_english_mapping(table_name, table_data)
                 processed_tables[table_name] = table_data
         
         return processed_tables
@@ -487,6 +489,62 @@ class ChildTableProcessor:
             pass
         
         return None
+    
+    def _apply_arabic_to_english_mapping(self, table_name: str, table_data: List[Dict]) -> List[Dict]:
+        """
+        Apply Arabic to English mapping for child table data
+        
+        Args:
+            table_name (str): Name of the child table
+            table_data (List[Dict]): Table data to process
+            
+        Returns:
+            List[Dict]: Processed table data with English values
+        """
+        if not table_data:
+            return table_data
+        
+        processed_rows = []
+        
+        for row_data in table_data:
+            processed_row = row_data.copy()
+            
+            # Handle unit mapping for productivity table
+            if table_name == "productivity" and "unit" in processed_row:
+                unit_value = processed_row["unit"]
+                unit_mapping = {
+                    "كيلوجرام": "Kg",
+                    "صندوق": "Box", 
+                    "قطعة": "Nos",
+                    "متر": "Meter",
+                    "لتر": "Litre",
+                    "جرام": "Gram",
+                    "طن": "Ton"
+                }
+                processed_row["unit"] = unit_mapping.get(unit_value, unit_value)
+            
+            # Handle education level mapping
+            if table_name == "education" and "level" in processed_row:
+                level_value = processed_row["level"]
+                level_mapping = {
+                    "خريج": "Graduate",
+                    "دراسات عليا": "Post Graduate",
+                    "طالب جامعي": "Under Graduate"
+                }
+                processed_row["level"] = level_mapping.get(level_value, level_value)
+            
+            # Handle accommodation type mapping for addresses
+            if table_name == "address_details" and "accommodation_type" in processed_row:
+                accommodation_value = processed_row["accommodation_type"]
+                accommodation_mapping = {
+                    "مملوك": "Owned",
+                    "مستأجر": "Rented"
+                }
+                processed_row["accommodation_type"] = accommodation_mapping.get(accommodation_value, accommodation_value)
+            
+            processed_rows.append(processed_row)
+        
+        return processed_rows
     
     def _has_education_data(self, form_data: Dict) -> bool:
         """
