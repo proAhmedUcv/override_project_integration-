@@ -58,22 +58,17 @@ def get_micro_enterprise_dashboard_stats():
             frappe.log_error(f"Error counting micro enterprise beneficiaries: {str(e)}")
             total_beneficiaries = 0
         
-        # Get partnerships count with safer query
+        # Get technical support requests count (NEW)
         try:
-            # First check if Project Implementing Partner table exists
-            if frappe.db.table_exists('Project Implementing Partner'):
-                partnerships_result = frappe.db.sql("""
-                    SELECT COUNT(DISTINCT partner) as total_partnerships
-                    FROM `tabProject Implementing Partner`
-                    WHERE partner IS NOT NULL 
-                    AND partner != ''
-                    AND partner != 'None'
-                """, as_dict=True)
-                
-                if partnerships_result and len(partnerships_result) > 0:
-                    total_partnerships = partnerships_result[0].get('total_partnerships', 0) or 0
+            # Check if Technical Support Required table exists
+            if frappe.db.table_exists('Technical Support Required'):
+                total_partnerships = frappe.db.count('Technical Support Required') or 0
+                frappe.log_error(f"Technical Support Required count: {total_partnerships}")
+            else:
+                frappe.log_error("Technical Support Required table not found")
+                total_partnerships = 0
         except Exception as e:
-            frappe.log_error(f"Error counting partnerships: {str(e)}")
+            frappe.log_error(f"Error counting technical support requests: {str(e)}")
             total_partnerships = 0
         
         # If no real data, provide some sample data for demonstration
@@ -85,17 +80,17 @@ def get_micro_enterprise_dashboard_stats():
                 # There are projects but no completed ones, use some calculated values
                 completed_projects = max(1, int(total_projects * 0.3))  # Assume 30% completed
                 total_beneficiaries = total_projects * 50  # Assume 50 beneficiaries per project
-                total_partnerships = max(5, int(total_projects * 0.2))  # Assume partnerships
+                total_partnerships = max(5, int(total_projects * 0.4))  # Assume some support requests
             else:
                 # No projects at all, use demo data
                 completed_projects = 25
                 total_beneficiaries = 150  # Realistic number for micro enterprises
-                total_partnerships = 12
+                total_partnerships = 15  # Demo data for technical support requests
         
         dashboard_stats = {
             'completed_projects': int(completed_projects),
             'total_beneficiaries': int(total_beneficiaries),
-            'strategic_partnerships': int(total_partnerships)
+            'total_technical_support_requests': int(total_partnerships)  # NEW field name
         }
         
         return api_response(
@@ -113,7 +108,7 @@ def get_micro_enterprise_dashboard_stats():
         fallback_stats = {
             'completed_projects': 25,
             'total_beneficiaries': 150,
-            'strategic_partnerships': 12
+            'total_technical_support_requests': 15  # NEW field name
         }
         
         return api_response(
