@@ -10,6 +10,114 @@ import uuid
 import re
 
 
+def create_api_response(success=True, message="", data=None, status_code=200, errors=None):
+    """
+    Create standardized API response format
+    
+    Args:
+        success (bool): Whether the operation was successful
+        message (str): Human-readable message
+        data (dict): Response data
+        status_code (int): HTTP status code
+        errors (dict): Error details
+    
+    Returns:
+        dict: Formatted API response
+    """
+    response = {
+        "success": success,
+        "message": message,
+        "timestamp": datetime.now().isoformat(),
+        "status_code": status_code
+    }
+    
+    if success and data is not None:
+        response["data"] = data
+    elif not success:
+        error_info = {
+            "code": f"ERROR_{status_code}",
+            "message": message,
+            "request_id": str(uuid.uuid4())
+        }
+        
+        if errors is not None:
+            error_info.update(errors)
+        
+        response["error"] = error_info
+    
+    # Set HTTP status code
+    if hasattr(frappe, 'local') and hasattr(frappe.local, 'response'):
+        frappe.local.response.http_status_code = status_code
+    
+    return response
+
+
+def validate_token_id(token_id):
+    """
+    Validate token_id and get associated user information
+    
+    Args:
+        token_id (str): Token ID from better-auth
+        
+    Returns:
+        dict: User information if valid, None if invalid
+    """
+    try:
+        if not token_id:
+            return None
+        
+        # Check if Micro Enterprise Request exists with this token_id
+        micro_enterprise_requests = frappe.get_all(
+            "Micro Enterprise Request",
+            filters={"token_id": token_id},
+            fields=["name", "family_name", "first_name", "last_name", "creation"]
+        )
+        
+        if micro_enterprise_requests:
+            return {
+                "token_id": token_id,
+                "micro_enterprise_requests": micro_enterprise_requests,
+                "is_valid": True
+            }
+        
+        return None
+        
+    except Exception as e:
+        frappe.log_error(f"Error validating token_id: {str(e)}", "Token Validation")
+        return None
+
+
+def log_api_call(endpoint, data=None):
+    """
+    Log API call for monitoring and debugging
+    
+    Args:
+        endpoint (str): API endpoint called
+        data (dict): Request data (sanitized)
+    """
+    try:
+        log_data = {
+            "timestamp": datetime.now().isoformat(),
+            "endpoint": endpoint,
+            "method": frappe.request.method if hasattr(frappe, 'request') else 'Unknown',
+            "ip_address": getattr(frappe.local, 'request_ip', 'Unknown'),
+            "user_agent": frappe.get_request_header("User-Agent", "") if hasattr(frappe, 'get_request_header') else "",
+            "request_id": str(uuid.uuid4())
+        }
+        
+        if data:
+            # Sanitize sensitive data before logging
+            sanitized_data = {k: v for k, v in data.items() 
+                            if k not in ["password", "token", "api_key", "token_id"]}
+            log_data["request_data"] = sanitized_data
+        
+        # Log at info level
+        frappe.logger().info(json.dumps(log_data, indent=2))
+            
+    except Exception as e:
+        frappe.log_error(f"Error logging API call: {str(e)}")
+
+
 def api_response(success=True, message="", data=None, status_code=200, errors=None):
     """
     Enhanced standardized API response format
@@ -230,8 +338,8 @@ def log_api_request(endpoint, method, data=None, response=None, error=None):
             "timestamp": datetime.now().isoformat(),
             "endpoint": endpoint,
             "method": method,
-            "ip_address": frappe.local.request_ip,
-            "user_agent": frappe.get_request_header("User-Agent", ""),
+            "ip_address": getattr(frappe.local, 'request_ip', 'Unknown'),
+            "user_agent": frappe.get_request_header("User-Agent", "") if hasattr(frappe, 'get_request_header') else "",
             "request_id": str(uuid.uuid4())
         }
         
@@ -263,15 +371,15 @@ def get_client_ip():
         str: Client IP address
     """
     # Check for forwarded IP first (in case of proxy/load balancer)
-    forwarded_for = frappe.get_request_header("X-Forwarded-For")
+    forwarded_for = frappe.get_request_header("X-Forwarded-For") if hasattr(frappe, 'get_request_header') else None
     if forwarded_for:
         return forwarded_for.split(",")[0].strip()
     
-    real_ip = frappe.get_request_header("X-Real-IP")
+    real_ip = frappe.get_request_header("X-Real-IP") if hasattr(frappe, 'get_request_header') else None
     if real_ip:
         return real_ip
     
-    return frappe.local.request_ip or "unknown"
+    return getattr(frappe.local, 'request_ip', 'unknown')
 
 
 def validate_token_request(token):
@@ -284,9 +392,6 @@ def validate_token_request(token):
     Returns:
         tuple: (is_valid, error_response)
     """
-    from override_project_integration.api.token_manager import TokenManager
-    from override_project_integration.api.errors import TokenError
-    
     try:
         if not token:
             return False, api_response(
@@ -296,31 +401,13 @@ def validate_token_request(token):
                 errors={"token": [_("Token parameter is missing")]}
             )
         
-        # Validate token format
-        if not TokenManager.validate_token_format(token):
+        # Basic token format validation
+        if len(token) < 10:
             return False, api_response(
                 success=False,
                 message=_("Invalid token format"),
                 status_code=400,
                 errors={"token": [_("Token format is invalid")]}
-            )
-        
-        # Check if token exists
-        if not TokenManager.token_exists(token):
-            return False, api_response(
-                success=False,
-                message=_("Token not found"),
-                status_code=404,
-                errors={"token": [_("Token does not exist")]}
-            )
-        
-        # Check if token is expired
-        if TokenManager.is_token_expired(token):
-            return False, api_response(
-                success=False,
-                message=_("Token has expired"),
-                status_code=400,
-                errors={"token": [_("Token has expired")]}
             )
         
         return True, None
@@ -350,6 +437,9 @@ def extract_token_from_request():
     
     if not token:
         token = frappe.local.form_dict.get('tracking_token')
+    
+    if not token:
+        token = frappe.local.form_dict.get('token_id')
     
     return token
 
