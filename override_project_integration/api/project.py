@@ -217,6 +217,7 @@ def get_project_statistics():
 def get_dashboard_stats():
     """
     Get simplified dashboard statistics for home page
+    Updated to use Technical Support Requests instead of Strategic Partnerships
     
     Returns:
         dict: API response with dashboard statistics
@@ -225,7 +226,7 @@ def get_dashboard_stats():
         # Initialize default values
         completed_projects = 0
         total_beneficiaries = 0
-        total_partnerships = 0
+        total_technical_support_requests = 0  # NEW: Technical Support Requests instead of partnerships
         
         # Get completed projects count with error handling
         try:
@@ -241,7 +242,7 @@ def get_dashboard_stats():
                 beneficiaries_result = frappe.db.sql("""
                     SELECT COALESCE(SUM(
                         CASE 
-                            WHEN number_of_beneficiaries REGEXP '^[0-9]+$' 
+                            WHEN number_of_beneficiaries REGEXP '^[0-9]+$'
                             THEN CAST(number_of_beneficiaries AS UNSIGNED)
                             ELSE 0
                         END
@@ -257,26 +258,21 @@ def get_dashboard_stats():
             frappe.log_error(f"Error counting beneficiaries: {str(e)}")
             total_beneficiaries = 0
         
-        # Get partnerships count with safer query
+        # Get technical support requests count (NEW)
         try:
-            # First check if Project Implementing Partner table exists
-            if frappe.db.table_exists('Project Implementing Partner'):
-                partnerships_result = frappe.db.sql("""
-                    SELECT COUNT(DISTINCT partner) as total_partnerships
-                    FROM `tabProject Implementing Partner`
-                    WHERE partner IS NOT NULL 
-                    AND partner != ''
-                    AND partner != 'None'
-                """, as_dict=True)
-                
-                if partnerships_result and len(partnerships_result) > 0:
-                    total_partnerships = partnerships_result[0].get('total_partnerships', 0) or 0
+            # Check if Technical Support Required table exists
+            if frappe.db.table_exists('Technical Support Required'):
+                total_technical_support_requests = frappe.db.count('Technical Support Required') or 0
+                frappe.log_error(f"Technical Support Required count: {total_technical_support_requests}")
+            else:
+                frappe.log_error("Technical Support Required table not found")
+                total_technical_support_requests = 0
         except Exception as e:
-            frappe.log_error(f"Error counting partnerships: {str(e)}")
-            total_partnerships = 0
+            frappe.log_error(f"Error counting technical support requests: {str(e)}")
+            total_technical_support_requests = 0
         
         # If no real data, provide some sample data for demonstration
-        if completed_projects == 0 and total_beneficiaries == 0 and total_partnerships == 0:
+        if completed_projects == 0 and total_beneficiaries == 0 and total_technical_support_requests == 0:
             # Get total project count to see if there are any projects at all
             total_projects = frappe.db.count('Project') or 0
             
@@ -284,17 +280,17 @@ def get_dashboard_stats():
                 # There are projects but no completed ones, use some calculated values
                 completed_projects = max(1, int(total_projects * 0.3))  # Assume 30% completed
                 total_beneficiaries = total_projects * 50  # Assume 50 beneficiaries per project
-                total_partnerships = max(5, int(total_projects * 0.2))  # Assume partnerships
+                total_technical_support_requests = max(5, int(total_projects * 0.4))  # Assume some support requests
             else:
                 # No projects at all, use demo data
                 completed_projects = 25
                 total_beneficiaries = 500
-                total_partnerships = 12
+                total_technical_support_requests = 15  # Demo data for technical support requests
         
         dashboard_stats = {
             'completed_projects': int(completed_projects),
             'total_beneficiaries': int(total_beneficiaries),
-            'strategic_partnerships': int(total_partnerships)
+            'total_technical_support_requests': int(total_technical_support_requests)  # NEW field
         }
         
         return api_response(
@@ -312,7 +308,7 @@ def get_dashboard_stats():
         fallback_stats = {
             'completed_projects': 25,
             'total_beneficiaries': 500,
-            'strategic_partnerships': 12
+            'total_technical_support_requests': 15  # Fallback data for technical support
         }
         
         return api_response(
@@ -324,7 +320,7 @@ def get_dashboard_stats():
 
 @frappe.whitelist(allow_guest=True)
 @cors_handler
-@rate_limit(limit=50, window=60)  # 50 requests per minute for testing
+@rate_limit(limit=20, window=60)  # 20 requests per minute
 def test_database_connection():
     """
     Simple test to check database connectivity and Project table access
@@ -372,8 +368,8 @@ def test_database_connection():
             frappe.log_error(f"Project table test failed: {str(e)}")
             test_results['project_table_exists'] = False
         
-        # Check related tables
-        related_tables = ['Project Beneficiary', 'Project Implementing Partner']
+        # Check related tables including Technical Support Required
+        related_tables = ['Project Beneficiary', 'Project Implementing Partner', 'Technical Support Required']
         for table in related_tables:
             try:
                 exists = frappe.db.table_exists(table)
